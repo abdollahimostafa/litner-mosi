@@ -35,7 +35,7 @@ export default function Dashboard() {
   const [hours, setHours] = useState("");
   const [note, setNote] = useState(""); 
   const [selectedDayOffset, setSelectedDayOffset] = useState<number>(0); 
-  const [isSubmitting, setIsSubmitting] = useState(false); // جلوگیری از دبل‌کلیک و ریکوئست همزمان
+  const [isSubmitting, setIsSubmitting] = useState(false); 
   
   const [logs, setLogs] = useState<any[]>([]);
   const [weekPerformance, setWeekPerformance] = useState<any[]>([]);
@@ -88,22 +88,38 @@ export default function Dashboard() {
             return;
           }
         }
-        setCurrentUser("mostafa");
-        fetchDatabaseData("mostafa");
+        // اگر سشن معتبر نبود، کاربر باید به صفحه لاگین هدایت شود
+        window.location.href = "/login";
       } catch (err) {
         console.error("Auth verification failed:", err);
-        setCurrentUser("mostafa");
-        fetchDatabaseData("mostafa");
+        window.location.href = "/login";
       }
     };
     checkAuth();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/logout", { method: "POST" });
+      if (res.ok) {
+        setCurrentUser(null);
+        window.location.href = "/login";
+      } else {
+        // Fallback در صورتی که دلیت دستی کوکی‌ها مد نظرتان باشد
+        document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        window.location.href = "/login";
+      }
+    } catch (err) {
+      console.error("Logout failed:", err);
+      window.location.href = "/login";
+    }
+  };
+
   const handleAddLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTopic || !hours || !currentUser || isSubmitting) return;
 
-    setIsSubmitting(true); // قفل کردن دکمه فرم
+    setIsSubmitting(true);
 
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + selectedDayOffset);
@@ -134,7 +150,7 @@ export default function Dashboard() {
     } catch (err) {
       console.error("API submission failed:", err);
     } finally {
-      setIsSubmitting(false); // باز کردن مجدد قفل دکمه در پایان عملیات
+      setIsSubmitting(false);
     }
   };
 
@@ -204,8 +220,20 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-2">
           {!isLoading && (
-            <div className={`text-[11px] font-bold px-3 py-1 rounded-full transition-all ${userBgLightClass} ${userTextColorClass}`}>
-              {isMostafa ? "مصطفی" : "ساغر"}
+            <div className="flex items-center gap-1.5">
+              <div className={`text-[11px] font-bold px-3 py-1 rounded-full transition-all ${userBgLightClass} ${userTextColorClass}`}>
+                {isMostafa ? "مصطفی" : "ساغر"}
+              </div>
+              {/* دکمه خروج مینیمال */}
+              <button 
+                onClick={handleLogout}
+                className="p-1.5 text-neutral-400 hover:text-red-500 rounded-lg hover:bg-neutral-100 transition-all"
+                title="خروج از حساب"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                </svg>
+              </button>
             </div>
           )}
         </div>
@@ -541,7 +569,6 @@ export default function Dashboard() {
         <nav className="bg-white/90 backdrop-blur-md border border-[#EAE8E2]/70 shadow-xl h-20 px-2 flex items-center w-full rounded-2xl">
           <div className="w-full grid grid-cols-4 h-14">
             
-            {/* دکمه کارنامه (Tab 1) */}
             <button 
               onClick={() => setActiveTab("history")} 
               className={`flex flex-col items-center justify-center gap-1 transition-colors ${
@@ -554,7 +581,6 @@ export default function Dashboard() {
               <span className="text-[10px] tracking-tight">کارنامه</span>
             </button>
 
-            {/* دکمه ثبت دستی (Tab 2) */}
             <button 
               onClick={() => setActiveTab("add")} 
               className={`flex flex-col items-center justify-center gap-1 transition-colors ${
@@ -567,7 +593,6 @@ export default function Dashboard() {
               <span className="text-[10px] tracking-tight">ثبت دستی</span>
             </button>
 
-            {/* دکمه وضعیت (Tab 3) */}
             <button 
               onClick={() => setActiveTab("overview")} 
               className={`flex flex-col items-center justify-center gap-1 transition-colors ${
@@ -580,7 +605,6 @@ export default function Dashboard() {
               <span className="text-[10px] tracking-tight">وضعیت</span>
             </button>
 
-            {/* دکمه مرور درس‌ها (Tab 4) */}
             <button 
               onClick={() => setActiveTab("weeks")} 
               className={`flex flex-col items-center justify-center gap-1 transition-colors ${
