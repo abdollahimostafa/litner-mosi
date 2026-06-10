@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 const TOPICS = [
-   "جراحی", "اطفال", "زنان", 
-   "داخلی - قلب", "داخلی - روماتولوژی", "داخلی - ریه", "داخلی - گوارش", "داخلی - نفرولوژی", "داخلی - غدد",
-   "داخلی - هماتولوژی","ارتوپدی","ارولوژی","پوست","پاتولوژی",
+  "جراحی", "اطفال", "زنان", 
+  "داخلی - قلب", "داخلی - روماتولوژی", "داخلی - ریه", "داخلی - گوارش", "داخلی - نفرولوژی", "داخلی - غدد",
+  "داخلی - هماتولوژی", "ارتوپدی", "ارولوژی", "پوست", "پاتولوژی",
   "روانپزشکی", "عفونی", "نورولوژی", "چشم", 
-  "فارماکولوژی", "ENT", " رادیو", "آمار و اپیدمی",
+  "فارماکولوژی", "ENT", "رادیو", "آمار و اپیدمی",
   "صلاحیت بالینی", "QA"
 ];
 
@@ -19,16 +20,22 @@ const toPersianDigits = (num: string | number) => {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<"mostafa" | "saghar" | null>(null);
   const [activeTab, setActiveTab] = useState<"history" | "add" | "overview" | "weeks">("history");
+  
+  // استیت‌های فرم ثبت اطلاعات
   const [selectedTopic, setSelectedTopic] = useState("");
   const [hours, setHours] = useState("");
   const [note, setNote] = useState(""); 
+  const [selectedDate, setSelectedDate] = useState<"today" | "yesterday" | "beforeYesterday">("today");
+  const [isSubmitting, setIsSubmitting] = useState(false); // استیت جدید برای کنترل لودینگ دکمه ثبت
+
   const [logs, setLogs] = useState<any[]>([]);
   const [weekPerformance, setWeekPerformance] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // استیت‌های بررسی آماری (Overview) کاربر فعلی
+  // استیت‌های بررسی آماری (Overview)
   const [streak, setStreak] = useState(0);
   const [currentWeekTotal, setCurrentWeekTotal] = useState(0);
   const [last4Weeks, setLast4Weeks] = useState<any[]>([]);
@@ -61,7 +68,12 @@ export default function Dashboard() {
       if (resOpponent.ok) {
         const opponentData = await resOpponent.json();
         const oppLogs = opponentData.logs || [];
-        const oppTodayTotal = oppLogs.reduce((sum: number, log: any) => sum + (parseFloat(log.hours) || 0), 0);
+        
+        const todayStr = new Date().toDateString();
+        const oppTodayTotal = oppLogs.reduce((sum: number, log: any) => {
+          const logDate = new Date(log.createdAt).toDateString();
+          return logDate === todayStr ? sum + (parseFloat(log.hours) || 0) : sum;
+        }, 0);
         
         const oppPerf = opponentData.performance || [];
         const oppWeekTotal = oppPerf.reduce((sum: number, perf: any) => sum + (parseFloat(perf.hours) || 0), 0);
@@ -84,25 +96,34 @@ export default function Dashboard() {
           const data = await res.json();
           if (data.user === "mostafa" || data.user === "saghar") {
             setCurrentUser(data.user);
-            fetchDatabaseData(data.user);
+            await fetchDatabaseData(data.user);
             return;
           }
         }
-        setCurrentUser("mostafa");
-        fetchDatabaseData("mostafa");
+        router.replace("/login");
       } catch (err) {
         console.error("Auth verification failed:", err);
-        setCurrentUser("mostafa");
-        fetchDatabaseData("mostafa");
+        router.replace("/login");
       }
     };
 
     checkAuth();
-  }, []);
+  }, [router]);
 
   const handleAddLog = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTopic || !hours || !currentUser) return;
+    if (!selectedTopic || !hours || !currentUser || isSubmitting) return;
+
+    setIsSubmitting(true); // غیرفعال کردن دکمه بلافاصله پس از اولین کلیک
+
+    let targetDate = new Date();
+    if (selectedDate === "yesterday") {
+      targetDate.setDate(targetDate.getDate() - 1);
+      targetDate.setHours(12, 0, 0, 0); 
+    } else if (selectedDate === "beforeYesterday") {
+      targetDate.setDate(targetDate.getDate() - 2);
+      targetDate.setHours(12, 0, 0, 0);
+    }
 
     try {
       const res = await fetch("/api/study-logs", {
@@ -113,6 +134,7 @@ export default function Dashboard() {
           hours: hours,
           note: note.trim(), 
           user: currentUser,
+          customDate: targetDate.toISOString(), 
         }),
       });
 
@@ -120,6 +142,7 @@ export default function Dashboard() {
         setSelectedTopic("");
         setHours("");
         setNote(""); 
+        setSelectedDate("today");
         setActiveTab("history");
         await fetchDatabaseData(currentUser);
       } else {
@@ -127,6 +150,19 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error("API submission failed:", err);
+    } finally {
+      setIsSubmitting(false); // فعال کردن مجدد دکمه در صورت پایان فرآیند یا خطا
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (res.ok) {
+        router.replace("/login");
+      }
+    } catch (err) {
+      console.error("Logout failed:", err);
     }
   };
 
@@ -136,7 +172,6 @@ export default function Dashboard() {
   };
 
   const todayTotalHours = logs.reduce((sum, log) => {
-    // محاسبه مجموع رکوردهای ثبت شده با تاریخ امروز
     const logDate = new Date(log.createdAt).toDateString();
     const todayDate = new Date().toDateString();
     if (logDate === todayDate) {
@@ -147,9 +182,9 @@ export default function Dashboard() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[#F9F8F4] flex flex-col items-center justify-center font-sans" dir="rtl">
-        <div className="w-8 h-8 border-2 border-[#2C2A27] border-t-transparent rounded-full animate-spin mb-4" />
-        <span className="text-xs text-neutral-400 font-medium tracking-wide">در حال بررسی دسترسی...</span>
+      <div className="min-h-screen bg-[#F9F8F4] flex flex-col items-center justify-center" dir="rtl">
+        <div className="w-6 h-6 border-2 border-[#2C2A27] border-t-transparent rounded-full animate-spin mb-4" />
+        <span className="text-[11px] text-neutral-400 font-mono tracking-wide">AUTHENTICATING SESSION...</span>
       </div>
     );
   }
@@ -174,18 +209,27 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-[#F9F8F4] text-[#2C2A27] flex flex-col relative pb-36" dir="rtl">
       
-      {/* ─── PREMIUM SMOOTH HEADER ─── */}
+      {/* ─── HEADER ─── */}
       <header className="p-6 flex justify-between items-center bg-white/70 backdrop-blur-md sticky top-0 z-10 max-w-md mx-auto w-full border-b border-[#EAE8E2]/60">
         <div>
           <span className="text-[9px] font-bold tracking-widest text-neutral-400 block uppercase">RESIDENCY JOURNAL</span>
           <h1 className="text-lg font-bold text-[#1C1B19] mt-0.5">میز مطالعه من</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {!isLoading && (
             <div className={`text-[11px] font-bold px-3 py-1 rounded-full transition-all ${userBgLightClass} ${userTextColorClass}`}>
               {isMostafa ? "مصطفی" : "ساغر"}
             </div>
           )}
+          <button 
+            onClick={handleLogout}
+            className="p-1 text-neutral-400 hover:text-red-600 transition-colors"
+            title="خروج از سیستم"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -274,7 +318,6 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* لیست گزارش‌های ثبت‌شده امروز */}
                   <div className="space-y-3">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400 px-1">گزارش‌های ثبت‌شده امروز</h3>
                     <div className="space-y-2.5">
@@ -306,7 +349,7 @@ export default function Dashboard() {
                               </div>
                               
                               {log.note && (
-                                <div className="bg-[#FBFBFA] rounded-md  border border-[#EAE8E2]/60 p-2.5 text-[11px] text-neutral-500 text-right leading-relaxed font-medium">
+                                <div className="bg-[#FBFBFA] rounded-md border border-[#EAE8E2]/60 p-2.5 text-[11px] text-neutral-500 text-right leading-relaxed font-medium">
                                   {log.note}
                                 </div>
                               )}
@@ -331,8 +374,55 @@ export default function Dashboard() {
               className="bg-white p-6 rounded-sm border border-[#EAE8E2]/50 shadow-sm space-y-6"
             >
               <form onSubmit={handleAddLog} className="space-y-6">
+                
+                {/* بخش دیت‌پیکر */}
                 <div>
-                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-3">۱. انتخاب مبحث دستیاری</label>
+                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-3">۱. تاریخ ثبت گزارش</label>
+                  <div className="grid grid-cols-3 gap-1 bg-[#FBFBFA] border border-[#EAE8E2] p-1">
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setSelectedDate("today")}
+                      className={`py-2 text-xs font-medium transition-all ${
+                        selectedDate === "today"
+                          ? "bg-[#2C2A27] text-white font-bold"
+                          : "text-neutral-400 hover:text-[#2C2A27]"
+                      } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                      style={{ borderRadius: "0px" }}
+                    >
+                      امروز
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setSelectedDate("yesterday")}
+                      className={`py-2 text-xs font-medium transition-all ${
+                        selectedDate === "yesterday"
+                          ? "bg-[#2C2A27] text-white font-bold"
+                          : "text-neutral-400 hover:text-[#2C2A27]"
+                      } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                      style={{ borderRadius: "0px" }}
+                    >
+                      دیروز
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setSelectedDate("beforeYesterday")}
+                      className={`py-2 text-xs font-medium transition-all ${
+                        selectedDate === "beforeYesterday"
+                          ? "bg-[#2C2A27] text-white font-bold"
+                          : "text-neutral-400 hover:text-[#2C2A27]"
+                      } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                      style={{ borderRadius: "0px" }}
+                    >
+                      پریروز
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-3">۲. انتخاب مبحث دستیاری</label>
                   <div className="grid grid-cols-2 gap-2">
                     {TOPICS.map((topic) => {
                       const isSelected = selectedTopic === topic;
@@ -340,12 +430,14 @@ export default function Dashboard() {
                         <button
                           key={topic}
                           type="button"
+                          disabled={isSubmitting}
                           onClick={() => setSelectedTopic(topic)}
-                          className={`p-3 text-right text-xs rounded-xl border transition-all ${
+                          className={`p-3 text-right text-xs border transition-all ${
                             isSelected 
                               ? "bg-[#2C2A27] text-white border-[#2C2A27] shadow-sm font-bold" 
                               : "bg-[#FBFBFA] text-[#2C2A27] border-[#EAE8E2] hover:border-[#2C2A27]"
-                          }`}
+                          } ${isSubmitting ? "opacity-60 cursor-not-allowed" : ""}`}
+                          style={{ borderRadius: "0px" }}
                         >
                           {topic}
                         </button>
@@ -355,16 +447,18 @@ export default function Dashboard() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-2.5">۲. مدت زمان مطالعه</label>
+                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-2.5">۳. مدت زمان مطالعه</label>
                   <div className="space-y-3">
                     <div className="relative flex items-center">
                       <input
                         type="number"
                         step="0.5"
                         placeholder="0.0"
+                        disabled={isSubmitting}
                         value={hours}
                         onChange={(e) => setHours(e.target.value)}
-                        className="w-full p-4 bg-[#FBFBFA] border border-[#EAE8E2] focus:border-[#2C2A27] rounded-xl focus:outline-none font-mono text-left text-sm font-bold pl-16 transition-all"
+                        className="w-full p-4 bg-[#FBFBFA] border border-[#EAE8E2] focus:border-[#2C2A27] focus:outline-none font-mono text-left text-sm font-bold pl-16 transition-all disabled:opacity-50"
+                        style={{ borderRadius: "0px" }}
                       />
                       <span className="absolute left-4 text-xs font-bold text-neutral-400 pointer-events-none">ساعت</span>
                     </div>
@@ -374,8 +468,10 @@ export default function Dashboard() {
                         <button
                           key={amount}
                           type="button"
+                          disabled={isSubmitting}
                           onClick={() => quickAddHours(amount)}
-                          className="py-2.5 text-xs font-bold bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-700 font-mono transition-all"
+                          className="py-2.5 text-xs font-bold bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 text-neutral-700 font-mono transition-all disabled:opacity-50"
+                          style={{ borderRadius: "0px" }}
                         >
                           +{toPersianDigits(amount)} ساعت
                         </button>
@@ -385,36 +481,44 @@ export default function Dashboard() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-2.5">۳. توضیحات یا یادداشت (اختیاری)</label>
+                  <label className="block text-xs font-bold text-neutral-400 uppercase mb-2.5">۴. توضیحات یا یادداشت (اختیاری)</label>
                   <textarea
                     rows={3}
                     placeholder="نکات کلیدی، کیس مچ شده یا علت پیشرفت مبحث را بنویسید..."
+                    disabled={isSubmitting}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    className="w-full p-4 bg-[#FBFBFA] border border-[#EAE8E2] focus:border-[#2C2A27] rounded-xl focus:outline-none text-xs font-medium leading-relaxed transition-all resize-none"
+                    className="w-full p-4 bg-[#FBFBFA] border border-[#EAE8E2] focus:border-[#2C2A27] focus:outline-none text-xs font-medium leading-relaxed transition-all resize-none disabled:opacity-50"
+                    style={{ borderRadius: "0px" }}
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full p-4 bg-[#2C2A27] text-white text-xs font-bold uppercase rounded-xl hover:bg-neutral-800 transition-all shadow-md active:scale-[0.99]"
+                  disabled={isSubmitting}
+                  className={`w-full p-4 text-white text-xs font-bold uppercase transition-all shadow-md flex items-center justify-center gap-2 ${
+                    isSubmitting 
+                      ? "bg-neutral-400 cursor-not-allowed" 
+                      : "bg-[#2C2A27] hover:bg-neutral-800 active:scale-[0.99]"
+                  }`}
+                  style={{ borderRadius: "0px" }}
                 >
-                  ذخیره و آپدیت بورد
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      در حال ثبت اطلاعات...
+                    </>
+                  ) : (
+                    "ذخیره و آپدیت بورد"
+                  )}
                 </button>
               </form>
             </motion.div>
           )}
 
-          {/* TAB 3: OVERVIEW WITH SHIFTED 4 WEEKS PROGRESS REVIEW */}
+          {/* TAB 3: OVERVIEW */}
           {activeTab === "overview" && (
-            <motion.div
-              key="overview"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-5"
-            >
+            <div className="space-y-5">
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white p-5 border border-[#EAE8E2]/60 shadow-sm flex flex-col justify-between">
                   <div className="text-neutral-400 text-[10px] font-bold uppercase tracking-wider">روزهای متوالی (Streak)</div>
@@ -439,13 +543,12 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* حریف (Live) */}
               <div className="bg-white p-5 border border-[#EAE8E2]/60 shadow-sm relative overflow-hidden">
                 <div className={`absolute top-0 right-0 w-full h-[3px] ${opponentColorClass}`} />
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h3 className="text-xs font-bold text-[#1C1B19]">وضعیت  ({opponentName})</h3>
-                    <p className="text-[10px] text-neutral-400 mt-0.5">اون امروز و این هفته چیکار کرده</p>
+                    <h3 className="text-xs font-bold text-[#1C1B19]">وضعیت ({opponentName})</h3>
+                    <p className="text-[10px] text-neutral-400 mt-0.5">وضعیت و پیشرفت حریف در بازه زمانی زنده</p>
                   </div>
                   <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${opponentBgLightClass} ${opponentTextColorClass}`}>
                     LIVE
@@ -474,7 +577,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* بخش منتقل‌شده: مقایسه روند عملکرد ۴ هفته اخیر */}
               <div className="bg-white p-5 border border-[#EAE8E2]/60 shadow-sm space-y-4">
                 <div className="px-0.5">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">تاریخچه روند ۴ هفته اخیر</h3>
@@ -497,19 +599,12 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
-            </motion.div>
+            </div>
           )}
 
-          {/* TAB 4: ALL REGISTERED CARDS WITHIN THE LAST 4 WEEKS */}
+          {/* TAB 4: ARCHIVE CARD */}
           {activeTab === "weeks" && (
-            <motion.div
-              key="weeks"
-              initial={{ opacity: 0, x: 15 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -15 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
+            <div className="space-y-4">
               <div className="px-1">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">درس‌های خوانده‌شده (۴ هفته اخیر)</h3>
                 <p className="text-[10px] text-neutral-400 mt-1">آرشیو تمام کارت‌ها و گزارش‌های ثبت شده در این دوره</p>
@@ -560,13 +655,13 @@ export default function Dashboard() {
                   })
                 )}
               </div>
-            </motion.div>
+            </div>
           )}
 
         </AnimatePresence>
       </main>
 
-      {/* ─── FLOATING BOTTOM NAV (4 COLUMNS - STYLED) ─── */}
+      {/* ─── FLOATING BOTTOM NAV ─── */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 max-w-md mx-auto w-full">
         <nav className="bg-white/90 backdrop-blur-md border border-[#EAE8E2]/70 shadow-xl h-20 px-2 flex items-center w-full rounded-2xl">
           <div className="w-full grid grid-cols-4 h-14">
