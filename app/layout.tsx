@@ -4,12 +4,13 @@ import { iransansx } from '@/lib/fonts';
 
 // ۱. تنظیمات متادیتا بدون viewport
 export const metadata: Metadata = {
-  title: "دفتر مطالعه رزیدنتی",
+  title: "جعبه لایتنر",
   description: "سیستم ساده و مینیمال ثبت ساعت مطالعه آزمون دستیاری",
 };
 
 // ۲. اکسپورت جداگانه برای تنظیمات viewport
 export const viewport: Viewport = {
+    themeColor: "#10161f",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
