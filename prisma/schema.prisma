@@ -8,11 +8,28 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model StudyLog {
-  id        String   @id @default(cuid())
-  topic     String   // مبحث دستیاری
-  hours     Float    // مدت زمان مطالعه به ساعت
-  user      String   // "mostafa" یا "saghar"
-  note      String?  // <--- اضافه کردن این فیلد به صورت اختیاری
-  createdAt DateTime @default(now())
+
+model CardItem {
+  id         String         @id @default(cuid())
+  topic      String
+  chapter    String
+  createdAt  DateTime       @default(now())
+  stepIndex  Int            @default(0)
+  nextReview DateTime
+  cycleCount Int            @default(0)
+  history    HistoryEntry[]
+
+  @@index([nextReview])
+  @@index([topic])
+}
+
+model HistoryEntry {
+  id       String   @id @default(cuid())
+  date     DateTime
+  action   String // "created" | "done" | "postponed" | "restarted"
+  stepDays Int
+  cardId   String
+  card     CardItem @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
 }
