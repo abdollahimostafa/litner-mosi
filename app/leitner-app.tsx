@@ -9,7 +9,7 @@
  * کامپوننت خودکار با داده‌ی جدید رندر بشه.
  * ------------------------------------------------------------------
  */
-
+import type {  ReactElement } from "react";
 import { useState, useEffect, useMemo, useTransition, type SVGProps } from 'react';
 import DatePicker, { DateObject } from 'react-multi-date-picker';
 import persian from 'react-date-object/calendars/persian';
@@ -555,7 +555,7 @@ function PreviousReadsTab({ items }: { items: CardItem[] }) {
 // ----------------------------- ناوبری پایین -----------------------------
 
 function BottomNav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
-  const items: { key: Tab; label: string; Icon: (p: SVGProps<SVGSVGElement>) => JSX.Element }[] = [
+  const items: { key: Tab; label: string; Icon: (p: SVGProps<SVGSVGElement>) => ReactElement }[] = [
     { key: 'dashboard', label: 'داشبورد', Icon: HomeIcon },
     { key: 'add', label: 'افزودن', Icon: PlusIcon },
     { key: 'previous', label: 'مرورهای قبلی', Icon: ListIcon },
