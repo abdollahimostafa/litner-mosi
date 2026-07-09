@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next'
  
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Side by Side',
-    short_name: 'SideBy',
+    name: 'Leitner',
+    short_name: 'Leitner',
     description: 'Saghar yek dokhtare naz ast',
     start_url: '/',
     display: 'standalone',
